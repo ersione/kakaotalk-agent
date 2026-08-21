@@ -221,6 +221,27 @@ struct AXActionRunner {
         }
     }
 
+    func click(at point: CGPoint, toPID pid: pid_t) {
+        guard pid > 0 else { return }
+        let source = CGEventSource(stateID: .combinedSessionState)
+        if let down = CGEvent(
+            mouseEventSource: source,
+            mouseType: .leftMouseDown,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) {
+            down.postToPid(pid)
+        }
+        if let up = CGEvent(
+            mouseEventSource: source,
+            mouseType: .leftMouseUp,
+            mouseCursorPosition: point,
+            mouseButton: .left
+        ) {
+            up.postToPid(pid)
+        }
+    }
+
     func pressDownArrowKey() {
         pressKey(code: 125)
     }

@@ -57,6 +57,11 @@ kakaotalk-bridge send <chat-name> <message> --background-safe --keep-window --js
 Dry run은 `status="dry_run"`, exit code `0`입니다. 오류 문자열 대신 `status`와 종료 코드를
 분기 조건으로 사용하는 것을 권장합니다.
 
+`--background-safe`는 이미 열려 있고 최소화되지 않은 대상 채팅창만 사용합니다. 요청별로
+대상 AX 창과 입력창을 지정하므로 여러 채팅방을 교차해 발송할 수 있지만, 모든 `send`
+프로세스는 반드시 소비자 측에서 직렬화해야 합니다. 안전 모드는 KakaoTalk을 전면
+활성화하지 않으며, 필요한 창을 찾지 못하거나 전송 결과를 확인하지 못하면 실패합니다.
+
 ## 에이전트 구현 규칙
 
 1. `db-watch`를 한 번만 장기 실행합니다.
@@ -66,5 +71,4 @@ Dry run은 `status="dry_run"`, exit code `0`입니다. 오류 문자열 대신 `
 5. 전송 결과가 불명확하면 자동 재시도하지 않아 중복 메시지를 피합니다.
 6. 비밀 DB 키 캐시는 브리지 내부에 두고 봇 프로세스에는 전달하지 않습니다.
 
-실제 소비 예제는 형제 비공개 프로젝트 `louis-kakaotalk-bot`의
-`src/kakaotalk-agent.ts`에서 이 계약을 구현합니다.
+소비자는 언어나 배포 방식과 관계없이 이 stdio 계약만 구현하면 됩니다.

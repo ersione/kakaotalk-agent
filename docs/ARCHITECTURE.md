@@ -1,40 +1,65 @@
-# Repository architecture
+# Agent architecture
 
-## 권장 공개 구조
-
-장기적으로는 두 저장소가 가장 관리하기 좋습니다.
+`kakaotalk-agent`는 로그인된 KakaoTalk macOS 앱에서 메시지를 수신하고 발신하는 로컬
+Swift CLI입니다. 수신은 로컬 SQLCipher DB, 발신은 macOS Accessibility(AX) API를
+사용하며 KakaoTalk 서버 프로토콜을 구현하지 않습니다.
 
 ```text
-public: kakaotalk-local-bridge
-  Swift CLI + DB reader + AX sender + JSON/JSONL protocol + docs
-
-private: louis-kakaotalk-bot
-  personal config + commands + NAS URL + deployment + logs + secrets
+                         kakaotalk-agent
+                  +---------------------------+
+KakaoTalk DB ---->| DB discovery / SQLCipher |----> JSONL message events
+                  | DatabaseWatcher           |
+                  |                           |
+JSON send request | ChatWindowResolver        |----> KakaoTalk AX windows
+----------------->| composer / send pipeline  |
+                  +---------------------------+
 ```
 
-두 프로젝트가 공유해야 하는 실행 파일 경로와 계정 선택은
-`~/.config/kakaotalk-agent/config.json`에 두고, DB 파생 키는 같은 디렉터리의
-`db-auth.json`에 분리합니다. 봇 저장소에는 방과 명령 정책만 둡니다.
+## Module layout
 
-공개 저장소는 카카오톡과 외부 프로그램 사이의 범용 로컬 에이전트 역할만 담당합니다.
-비공개 저장소는 특정 방, 발신자, URL, 계정 이메일과 실제 응답 정책을 담당합니다.
+```text
+native/Sources/
+  KakaoDBCore/
+    Database/       SQLCipher DB 탐색·열기·쿼리
+    Models/         채팅방·메시지 모델
+    Sync/           log ID 기반 신규 메시지 watcher
+  KakaoTalkBridge/
+    Accessibility/  AXUIElement wrapper와 입력 액션
+    KakaoTalk/       앱·채팅창·composer 탐색
+    Database/        계정 DB 검증과 인증 캐시
+    Commands/        db-discover, db-watch, send 등 CLI 진입점
+```
 
-## 분리하는 이유
+## Receive path
 
-- 공개 코드에 개인 이메일·회원번호·방 ID·내부 URL이 섞일 위험 감소
-- 브리지 프로토콜 버전과 봇 기능 배포 주기를 독립적으로 관리
-- 다른 사용자가 Node.js 없이도 원하는 언어로 JSONL을 소비 가능
-- AX/DB 관련 이슈와 개인 봇 명령 관련 이슈 분리
-- 브리지에는 공개 라이선스, 비공개 봇에는 별도 정책 적용 가능
+1. `db-discover`가 KakaoTalk container의 DB 후보와 로컬 회원번호를 탐색합니다.
+2. `db-status <user-id>`가 기기 UUID와 회원번호로 파생한 키를 검증합니다.
+3. 검증된 DB 경로와 키를 `~/.config/kakaotalk-agent/db-auth.json`에 권한 `0600`으로
+   캐시합니다.
+4. `db-watch`가 `NTChatMessage.logId`를 cursor로 사용해 신규 행을 폴링합니다.
+5. 메시지를 한 줄씩 JSONL로 stdout에 출력합니다.
 
-## 분리 시점
+DB는 항상 read-only로 열며, KakaoTalk 앱이 비활성 상태여도 수신 감시를 계속할 수 있습니다.
 
-현재 로컬 프로젝트는 이미 두 폴더로 분리했습니다. 공개 전에는 다음 항목을 마무리합니다.
+## Send path
 
-- `db-discover`, `db-watch`, `send --json` 인터페이스 버전 고정
-- 새 macOS 계정에서 최초 설치 절차 재검증
-- 최소 한 번의 버전 태그와 바이너리 배포 방식 결정
-- 공개 저장소의 루트 라이선스 결정
+1. 채팅방 표시 이름으로 이미 열린 `AXWindow`를 찾습니다.
+2. 대상 창 안에서 composer `AXTextArea`를 해석하고 `AXValue`로 문자열을 설정합니다.
+3. `--background-safe`에서는 앱을 활성화하지 않고 KakaoTalk 내부의 focused window와
+   focused UI element만 대상 composer에 맞춥니다.
+4. composer 주변의 `전송` 버튼 `AXPress`를 우선 시도합니다.
+5. 필요하면 버튼 좌표의 PID-targeted click과 PID-targeted Return을 순서대로 시도합니다.
+6. composer가 비워졌는지로 전송 수락을 검증하고 JSON 결과와 exit code를 반환합니다.
 
-분리할 때 TypeScript 봇이 Swift 소스를 import하지 않게 합니다. 릴리스 바이너리 또는 Homebrew
-formula를 설치한 뒤 stdio JSON/JSONL로만 통신하는 것이 저장소 사이의 안정적인 경계입니다.
+여러 채팅방을 교차해 발송할 수 있지만 AX 포커스 상태를 공유하므로 `send` 호출은 항상
+직렬화해야 합니다.
+
+## Process and protocol boundary
+
+- `db-watch`: 장기 실행 JSONL producer
+- `send --json`: 요청당 하나의 JSON 결과를 반환하는 단기 프로세스
+- stdout: 기계가 파싱하는 JSON/JSONL
+- stderr: 준비 상태와 AX 진단
+
+외부 소비자는 Swift 모듈을 직접 불러오지 않고 [`PROTOCOL.md`](PROTOCOL.md)의 stdio 계약으로만
+통신합니다.

@@ -349,6 +349,33 @@ struct SendCommand: ParsableCommand {
 
         if backgroundSafe {
             let before = input.stringValue ?? ""
+            do {
+                try kakao.focusWithoutActivation(window: window, element: input)
+                runner.log("message input: requested AX window and input focus without app activation")
+                Thread.sleep(forTimeInterval: 0.15)
+            } catch {
+                runner.log("message input: background AX window/input focus request failed (\(error))")
+            }
+            if let sendButton = findSendButtonNearInput(input, runner: runner) {
+                do {
+                    try sendButton.press()
+                    runner.log("message input: requested send button AXPress")
+                } catch {
+                    runner.log("message input: send button AXPress failed (\(error))")
+                }
+                if inputWasSubmitted(input, before: before, label: "message input send button", runner: runner) {
+                    human("✓ Message sent to \(targetDescription) without activating KakaoTalk")
+                    return
+                }
+                if let frame = sendButton.frame {
+                    runner.click(at: CGPoint(x: frame.midX, y: frame.midY), toPID: kakao.processIdentifier)
+                    runner.log("message input: clicked send button coordinates through target PID")
+                    if inputWasSubmitted(input, before: before, label: "message input send button click", runner: runner) {
+                        human("✓ Message sent to \(targetDescription) without activating KakaoTalk")
+                        return
+                    }
+                }
+            }
             runner.pressEnterKey(toPID: kakao.processIdentifier)
             if runner.waitUntil(label: "message input pid-targeted Return", timeout: 0.6, condition: {
                 let after = input.stringValue ?? ""
@@ -386,6 +413,34 @@ struct SendCommand: ParsableCommand {
         }
 
         human("✓ Message sent to \(targetDescription)")
+    }
+
+    private func inputWasSubmitted(
+        _ input: UIElement,
+        before: String,
+        label: String,
+        runner: AXActionRunner
+    ) -> Bool {
+        runner.waitUntil(label: label, timeout: 0.6, condition: {
+            let after = input.stringValue ?? ""
+            return !before.isEmpty && after.isEmpty
+        })
+    }
+
+    private func findSendButtonNearInput(_ input: UIElement, runner: AXActionRunner) -> UIElement? {
+        var current: UIElement? = input
+        for depth in 1...4 {
+            guard let parent = current?.parent else { return nil }
+            if let button = parent.children.first(where: {
+                $0.role == kAXButtonRole && $0.title == "전송"
+            }) {
+                runner.log("message input: found send button at ancestor \(depth)")
+                return button
+            }
+            current = parent
+        }
+        runner.log("message input: no nearby send button found")
+        return nil
     }
 
     private func closeWindowsIfNeeded(

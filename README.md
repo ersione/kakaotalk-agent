@@ -21,7 +21,7 @@ macOS용 카카오톡 로컬 에이전트/CLI입니다. 공식 Bot API가 아니
 KakaoTalk SQLCipher DB ──► kakaotalk-agent db-watch ──► JSONL consumer
 KakaoTalk open window ◄── kakaotalk-agent send ◄────── JSON command/result
                               │
-                              └─ AXValue + CGEventPostToPid
+                              └─ AXValue + AX focus + AXPress/CGEventPostToPid
 ```
 
 수신에는 채팅창이 필요 없습니다. 백그라운드 발신은 대상 채팅창이 같은 macOS Space에 열려
@@ -52,12 +52,6 @@ swift build -c release --package-path native
 native/.build/release/kakaotalk-bridge status
 ```
 
-이 문서에서는 빌드 결과 경로를 편의상 다음처럼 표시합니다.
-
-```bash
-AGENT=./native/.build/release/kakaotalk-bridge
-```
-
 Swift가 SQLCipher를 찾지 못하면 다음을 확인합니다.
 
 ```bash
@@ -65,47 +59,20 @@ pkg-config --modversion sqlcipher
 brew --prefix sqlcipher
 ```
 
-## 중앙 설정
+## 로컬 DB 인증 캐시
 
-에이전트 실행 파일 위치와 로컬 계정 매핑, 현재 사용할 계정은 저장소 밖의 다음 파일에서
+에이전트는 일반 설정 파일이나 자체 실행 경로를 필요로 하지 않습니다. `db-status`가 검증한
+DB 경로와 파생 키만 `~/.config/kakaotalk-agent/db-auth.json`에 권한 `0600`으로 캐시합니다.
+실행 바이너리 경로, 사용할 계정, 채팅방·명령 정책은 호출하는 봇이 자신의 설정에서
 관리합니다.
-
-```text
-~/.config/kakaotalk-agent/config.json
-```
-
-```json
-{
-  "executablePath": "/absolute/path/to/kakaotalk-bridge",
-  "activeAccount": "current",
-  "accounts": {
-    "current": {
-      "email": "bot-account@example.com",
-      "userId": 123456789
-    },
-    "secondary": {
-      "email": "second-account@example.com",
-      "userId": 987654321
-    }
-  }
-}
-```
-
-- `executablePath`: 봇 등 외부 소비자가 실행할 에이전트 바이너리의 절대 경로
-- `activeAccount`: 현재 DB를 감시할 계정의 `accounts` 키
-- `accounts`: 이메일과 숫자 회원번호의 로컬 매핑
-
-이 파일은 계정 정보가 들어가므로 공개 저장소에 포함하지 않습니다. 외부 소비자는
-`KAKAOTALK_AGENT_CONFIG`로 다른 설정 경로를, `KAKAOTALK_AGENT_BIN`으로 실행 파일 경로를
-일시적으로 덮어쓸 수 있습니다.
 
 ## 최초 회원번호와 DB 찾기
 
 카카오 계정 이메일 대신 숫자 회원번호가 DB 키 파생에 사용됩니다.
 
 ```bash
-$AGENT db-discover
-$AGENT db-discover --json
+native/.build/release/kakaotalk-bridge db-discover
+native/.build/release/kakaotalk-bridge db-discover --json
 ```
 
 ```json
@@ -119,7 +86,7 @@ $AGENT db-discover --json
 회원번호를 알고 있다면 직접 검증합니다.
 
 ```bash
-$AGENT db-status 123456789 --json
+native/.build/release/kakaotalk-bridge db-status 123456789 --json
 ```
 
 파생 DB 키는 같은 디렉터리의 `db-auth.json`에 권한 `0600`으로 별도 캐시됩니다.
@@ -128,7 +95,7 @@ $AGENT db-status 123456789 --json
 ## 메시지 수신
 
 ```bash
-$AGENT db-watch 123456789 --interval 0.3
+native/.build/release/kakaotalk-bridge db-watch 123456789 --interval 0.3
 ```
 
 이벤트당 JSON 한 줄이 stdout으로 출력됩니다.
@@ -146,7 +113,7 @@ JavaScript 정밀도 손실을 막기 위해 `chat_id`, `log_id`, `sender_id`는
 일반 계정 회원번호와 동일하다고 가정하지 않는 편이 안전합니다.
 
 ```bash
-$AGENT db-watch 123456789 --interval 0.3 --since-log-id 3912430000000000000
+native/.build/release/kakaotalk-bridge db-watch 123456789 --interval 0.3 --since-log-id 3912430000000000000
 ```
 
 ## 메시지 발신
@@ -154,7 +121,7 @@ $AGENT db-watch 123456789 --interval 0.3 --since-log-id 3912430000000000000
 포커스를 빼앗지 않는 권장 방식:
 
 ```bash
-$AGENT send "채팅방 표시 이름" "안녕하세요" \
+native/.build/release/kakaotalk-bridge send "채팅방 표시 이름" "안녕하세요" \
   --background-safe --keep-window --json
 ```
 
@@ -165,12 +132,28 @@ $AGENT send "채팅방 표시 이름" "안녕하세요" \
 Dry run:
 
 ```bash
-$AGENT send "채팅방 표시 이름" "안녕하세요" \
+native/.build/release/kakaotalk-bridge send "채팅방 표시 이름" "안녕하세요" \
   --background-safe --json --dry-run
 ```
 
 사람이 직접 사용하는 복구 모드에서는 `--background-safe`를 빼면 창 탐색 과정에서
 KakaoTalk을 활성화할 수 있습니다. 무인 봇은 안전 모드를 권장합니다.
+
+### 여러 채팅방으로 백그라운드 발신
+
+`--background-safe`는 여러 개로 열려 있는 채팅창 사이를 번갈아 발신할 수 있습니다. 각 요청은
+채팅방 표시 이름으로 대상 `AXWindow`와 composer를 찾고, KakaoTalk 프로세스 안의 포커스를
+그 창과 입력창에 맞춘 뒤 `전송` 버튼 `AXPress`를 우선 사용합니다. 필요하면 대상 PID 좌표
+클릭과 Return으로 폴백합니다. 이 과정은 `NSRunningApplication.activate()`를 호출하지 않으므로
+현재 사용 중인 다른 앱의 포커스를 빼앗지 않습니다.
+
+다중 채팅방 발신 조건:
+
+- 각 대상 채팅창을 미리 열어 둡니다.
+- 창은 최소화하지 않고 현재 macOS Space에서 AX로 보여야 합니다.
+- 여러 `send`를 동시에 실행하지 않고 큐에서 직렬화합니다.
+- KakaoTalk 버전에 따라 AX 액션의 반환값과 실제 결과가 다를 수 있어 composer가
+  비워졌는지로 전송 결과를 검증합니다.
 
 ## JSON 프로토콜
 
@@ -183,18 +166,6 @@ KakaoTalk을 활성화할 수 있습니다. 무인 봇은 안전 모드를 권�
 - 불명확한 전송 오류는 중복 위험 때문에 무한 자동 재시도 금지
 
 전체 계약은 [`docs/PROTOCOL.md`](docs/PROTOCOL.md)를 참고하세요.
-
-## 저장소 분리
-
-이 저장소는 범용 공개 에이전트만 담당합니다. 개인 명령·계정·방 ID·내부 URL은 별도 비공개
-봇 저장소에서 관리하는 것을 권장합니다. 현재 로컬 구성은 다음과 같습니다.
-
-```text
-kakaotalk-agent/       # 이 저장소: Swift CLI와 프로토콜
-louis-kakaotalk-bot/   # 비공개: 실제 명령, 설정, 운영
-```
-
-자세한 설계 이유는 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)를 참고하세요.
 
 ## 운영상 제약
 

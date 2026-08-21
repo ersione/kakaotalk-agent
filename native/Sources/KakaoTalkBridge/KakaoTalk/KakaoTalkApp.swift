@@ -16,6 +16,12 @@ public final class KakaoTalkApp: Sendable {
         Self.runningApplication?.processIdentifier ?? 0
     }
 
+    public func focusWithoutActivation(window: UIElement, element: UIElement) throws {
+        try app.setAttribute(kAXFocusedWindowAttribute, value: window.axElement)
+        try app.setAttribute(kAXFocusedUIElementAttribute, value: element.axElement)
+        try element.focus()
+    }
+
     public init(autoLaunch: Bool = true) throws {
         if Self.runningApplication == nil && autoLaunch {
             guard Self.launch() != nil else {
