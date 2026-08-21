@@ -137,7 +137,10 @@ native/.build/release/kakaotalk-agent watch --user-id 123456789 --interval 0.3
 ```
 
 JavaScript 정밀도 손실을 막기 위해 `chat_id`, `log_id`, `sender_id`는 문자열입니다.
-기본 시작점은 실행 시점의 최신 log ID이며 과거 이벤트를 재생하지 않습니다.
+기본 모드는 최근 시간 구간을 겹쳐 조회하고 `(chat_id, log_id)` 복합키로 중복을 제거합니다.
+`log_id`가 모든 방에서 전역 순서를 가진다고 가정하지 않으므로 방 사이의 ID 순서가 뒤섞여도
+메시지를 놓치지 않습니다. 시작할 때 최근 메시지를 중복 제거 캐시에만 등록하므로 과거 이벤트는
+재생하지 않습니다. `--since-log-id`를 명시한 경우에만 호환용 전역 log ID replay를 사용합니다.
 
 `sender`와 `chat_name`은 선택 필드입니다. 일반 채팅에서는 대체로 발신자 표시 이름을 얻을 수
 있지만, 1:1 오픈채팅을 포함한 일부 오픈채팅 이벤트는 `sender` 없이 `sender_id`만 제공할 수

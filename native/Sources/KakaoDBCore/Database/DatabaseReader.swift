@@ -235,6 +235,36 @@ public final class DatabaseReader: @unchecked Sendable {
         }
     }
 
+    /// Get messages in a recent time window. A time overlap plus the
+    /// (chatId, logId) identity is safer than assuming logId is globally ordered.
+    public func messagesSince(sentAt: Int64, myUserId: Int64) throws -> [SyncMessage] {
+        let sql = """
+            SELECT m.logId, m.chatId,
+                   COALESCE(NULLIF(r.chatName, ''), u.displayName, u.friendNickName, u.nickName) as chatName,
+                   r.type,
+                   m.authorId,
+                   COALESCE(u2.displayName, u2.friendNickName, u2.nickName) as senderName,
+                   m.message, m.type, m.sentAt
+            FROM NTChatMessage m
+            LEFT JOIN NTChatRoom r ON m.chatId = r.chatId
+            LEFT JOIN NTUser u ON r.directChatMemberUserId = u.userId AND u.linkId = 0
+            LEFT JOIN NTUser u2 ON m.authorId = u2.userId AND u2.linkId = 0
+            WHERE m.sentAt >= ?
+            ORDER BY m.sentAt ASC, m.chatId ASC, m.logId ASC
+            LIMIT 5000
+            """
+        let formatter = ISO8601DateFormatter()
+        return try query(sql, bind: [.int64(sentAt)]) { row in
+            SyncMessage(
+                type: "message", logId: row.int64(0), chatId: row.int64(1),
+                chatName: row.string(2), chatTypeCode: row.int(3), senderId: row.int64(4),
+                senderName: row.string(5), text: row.string(6), messageType: row.int(7),
+                timestamp: formatter.string(from: row.kakaoDate(8)),
+                isFromMe: row.int64(4) == myUserId
+            )
+        }
+    }
+
     /// Run an arbitrary read-only SQL query and return results as arrays of Any.
     public func rawQuery(_ sql: String) throws -> [[Any]] {
         var stmt: OpaquePointer?
