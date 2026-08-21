@@ -140,6 +140,11 @@ $AGENT db-watch 123456789 --interval 0.3
 JavaScript 정밀도 손실을 막기 위해 `chat_id`, `log_id`, `sender_id`는 문자열입니다.
 기본 시작점은 실행 시점의 최신 log ID이며 과거 이벤트를 재생하지 않습니다.
 
+`sender`와 `chat_name`은 선택 필드입니다. 일반 채팅에서는 대체로 발신자 표시 이름을 얻을 수
+있지만, 1:1 오픈채팅을 포함한 일부 오픈채팅 이벤트는 `sender` 없이 `sender_id`만 제공할 수
+있습니다. 소비자는 이름이 항상 존재한다고 가정하면 안 됩니다. 또한 오픈채팅의 `sender_id`는
+일반 계정 회원번호와 동일하다고 가정하지 않는 편이 안전합니다.
+
 ```bash
 $AGENT db-watch 123456789 --interval 0.3 --since-log-id 3912430000000000000
 ```

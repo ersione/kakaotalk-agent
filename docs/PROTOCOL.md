@@ -31,6 +31,11 @@ kakaotalk-bridge db-watch <user-id> --interval 0.3
 모든 ID는 JSON 문자열입니다. 소비자는 이벤트를 줄 단위로 파싱하고 `is_from_me=true`를
 기본적으로 무시해야 자기 응답을 다시 처리하는 루프를 막을 수 있습니다.
 
+`sender`와 `chat_name`은 optional입니다. 특히 1:1 오픈채팅을 포함한 일부 오픈채팅에서는
+DB 행에 표시 이름이 없어 `sender`가 생략되고 `sender_id`만 전달될 수 있습니다. 이름 기반
+정책을 구현하는 소비자는 이름 없음 상태를 명시적으로 처리해야 하며, `sender_id`가 일반
+카카오 회원번호와 항상 같다고 가정해서는 안 됩니다.
+
 ## 발신: 단일 JSON 결과
 
 ```bash
