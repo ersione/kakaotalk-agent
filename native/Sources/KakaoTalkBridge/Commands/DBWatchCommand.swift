@@ -9,6 +9,8 @@ struct DBWatchCommand: ParsableCommand {
         let logId: String
         let chatId: String
         let chatName: String?
+        let chatType: String
+        let chatTypeCode: Int
         let senderId: String
         let sender: String?
         let text: String?
@@ -21,6 +23,8 @@ struct DBWatchCommand: ParsableCommand {
             case logId = "log_id"
             case chatId = "chat_id"
             case chatName = "chat_name"
+            case chatType = "chat_type"
+            case chatTypeCode = "chat_type_code"
             case senderId = "sender_id"
             case messageType = "message_type"
             case isFromMe = "is_from_me"
@@ -31,6 +35,8 @@ struct DBWatchCommand: ParsableCommand {
             logId = String(message.logId)
             chatId = String(message.chatId)
             chatName = message.chatName
+            chatTypeCode = message.chatTypeCode
+            chatType = switch message.chatTypeCode { case 0: "direct"; case 1: "group"; case 4: "open"; default: "unknown" }
             senderId = String(message.senderId)
             sender = message.senderName
             text = message.text
@@ -61,6 +67,10 @@ struct DBWatchCommand: ParsableCommand {
     }
 
     func run() throws {
+        try Self.runWatch(userId: userId, interval: interval, sinceLogId: sinceLogId, refreshAuth: refreshAuth)
+    }
+
+    static func runWatch(userId: Int, interval: Double, sinceLogId: Int64?, refreshAuth: Bool = false) throws {
         let connection = try DBConnectionResolver.resolve(userId: userId, refresh: refreshAuth)
         let watcher = DatabaseWatcher(
             databasePath: connection.databasePath,

@@ -62,7 +62,7 @@ struct WatchManyCommand: ParsableCommand {
         let resolver = ChatWindowResolver(kakao: kakao, runner: runner)
         let contextResolver = MessageContextResolver(kakao: kakao, runner: runner)
         let reader = KakaoTalkTranscriptReader(kakao: kakao, runner: runner)
-        var helper = WatchCommand()
+        var helper = AXWatchCommand()
         helper.pollInterval = pollInterval
         helper.traceAX = traceAX
         helper.keepWindow = true

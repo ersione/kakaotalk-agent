@@ -5,7 +5,7 @@ let package = Package(
     name: "KakaoTalkBridge",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "kakaotalk-bridge", targets: ["KakaoTalkBridge"]),
+        .executable(name: "kakaotalk-agent", targets: ["KakaoTalkBridge"]),
         .library(name: "KakaoDBCore", targets: ["KakaoDBCore"]),
     ],
     dependencies: [

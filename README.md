@@ -5,12 +5,15 @@ macOS용 카카오톡 로컬 에이전트/CLI입니다. 공식 Bot API가 아니
 
 - `db-discover`: 로컬 계정 회원번호와 암호화 DB 탐색
 - `db-status`: 회원번호에 해당하는 DB 검증과 인증 캐시 생성
-- `db-watch`: 새 메시지를 JSONL로 스트리밍
+- `chats [--ax]`: 채팅방 목록·타입·안 읽은 개수
+- `messages [--ax]`: 채팅방 최신 메시지
+- `search`, `unread`: 로컬 메시지 검색과 안 읽은 대화
+- `watch [--ax]`: 새 메시지를 JSONL로 스트리밍
 - `send --json`: 열린 채팅창으로 메시지 전송
 - `send --background-safe`: 다른 앱의 포커스를 빼앗지 않는 대상 PID 전송
 
-특정 명령어나 응답 정책은 포함하지 않습니다. 외부 봇은
-[`docs/PROTOCOL.md`](docs/PROTOCOL.md)의 stdio JSON/JSONL 계약으로 연결합니다.
+특정 명령어나 응답 정책은 포함하지 않습니다. 외부 봇은 이 README의 JSON/JSONL
+계약으로 연결합니다.
 
 > 비공식 자동화 도구입니다. KakaoTalk 업데이트로 DB 스키마·암호화·AX 트리가 바뀌면
 > 동작하지 않을 수 있으며 계정 운영 책임은 사용자에게 있습니다.
@@ -18,7 +21,7 @@ macOS용 카카오톡 로컬 에이전트/CLI입니다. 공식 Bot API가 아니
 ## 동작 구조
 
 ```text
-KakaoTalk SQLCipher DB ──► kakaotalk-agent db-watch ──► JSONL consumer
+KakaoTalk SQLCipher DB ──► chats/messages/search/unread/watch ──► JSON/JSONL
 KakaoTalk open window ◄── kakaotalk-agent send ◄────── JSON command/result
                               │
                               └─ AXValue + AX focus + AXPress/CGEventPostToPid
@@ -27,6 +30,19 @@ KakaoTalk open window ◄── kakaotalk-agent send ◄────── JSON 
 수신에는 채팅창이 필요 없습니다. 백그라운드 발신은 대상 채팅창이 같은 macOS Space에 열려
 있고 최소화되지 않아야 합니다. 안전 모드에서는 창이나 composer를 찾지 못해도 KakaoTalk을
 전면 활성화하지 않고 실패합니다.
+
+기본 조회와 감시는 DB를 read-only로 사용합니다. `chats`, `messages`, `watch`에서 실제
+KakaoTalk 화면을 기준으로 동작해야 할 때만 `--ax`를 사용합니다. `search`와 `unread`는
+DB 전용이고 `send`는 본래 AX 기반입니다.
+
+### 내부 모듈
+
+```text
+KakaoDBCore/Database  DB 탐색·SQLCipher·read-only 쿼리
+KakaoDBCore/Sync      log_id cursor 기반 watcher
+KakaoTalkBridge/AX    채팅창·composer 탐색과 입력
+Commands/             CLI와 JSON/JSONL 경계
+```
 
 ## 요구 사항
 
@@ -49,7 +65,7 @@ brew install sqlcipher pkgconf
 
 ```bash
 swift build -c release --package-path native
-native/.build/release/kakaotalk-bridge status
+native/.build/release/kakaotalk-agent status
 ```
 
 Swift가 SQLCipher를 찾지 못하면 다음을 확인합니다.
@@ -71,8 +87,8 @@ DB 경로와 파생 키만 `~/.config/kakaotalk-agent/db-auth.json`에 권한 `0
 카카오 계정 이메일 대신 숫자 회원번호가 DB 키 파생에 사용됩니다.
 
 ```bash
-native/.build/release/kakaotalk-bridge db-discover
-native/.build/release/kakaotalk-bridge db-discover --json
+native/.build/release/kakaotalk-agent db-discover
+native/.build/release/kakaotalk-agent db-discover --json
 ```
 
 ```json
@@ -86,22 +102,38 @@ native/.build/release/kakaotalk-bridge db-discover --json
 회원번호를 알고 있다면 직접 검증합니다.
 
 ```bash
-native/.build/release/kakaotalk-bridge db-status 123456789 --json
+native/.build/release/kakaotalk-agent db-status 123456789 --json
 ```
 
 파생 DB 키는 같은 디렉터리의 `db-auth.json`에 권한 `0600`으로 별도 캐시됩니다.
-`config.json`과 `db-auth.json` 모두 공유하거나 커밋하지 마세요.
+`db-auth.json`은 공유하거나 커밋하지 마세요.
+
+## 채팅방·메시지 조회
+
+```bash
+native/.build/release/kakaotalk-agent chats --user-id 123456789 --json
+native/.build/release/kakaotalk-agent chats --ax --json
+native/.build/release/kakaotalk-agent messages --user-id 123456789 --chat-id 12345678901234567 --json
+native/.build/release/kakaotalk-agent messages --ax --chat "채팅방 이름" --background-safe --json
+native/.build/release/kakaotalk-agent search --user-id 123456789 "검색어" --json
+native/.build/release/kakaotalk-agent unread --user-id 123456789 --json
+```
+
+DB 채팅방은 `chat_type` (`direct`, `group`, `open`, `unknown`)과 원본
+`chat_type_code`를 함께 출력합니다. 현재 검증된 매핑은 `0=direct`, `1=group`, `4=open`이며
+나머지는 `unknown`으로 두고 숫자 코드를 보존합니다. DB에 방 이름이 없으면
+`chat_name`은 `(unknown)`일 수 있으며, 이때 `chats --ax`로 화면 표시 이름을 확인합니다.
 
 ## 메시지 수신
 
 ```bash
-native/.build/release/kakaotalk-bridge db-watch 123456789 --interval 0.3
+native/.build/release/kakaotalk-agent watch --user-id 123456789 --interval 0.3
 ```
 
 이벤트당 JSON 한 줄이 stdout으로 출력됩니다.
 
 ```json
-{"chat_id":"12345678901234567","is_from_me":false,"log_id":"3912432077316462593","sender":"Alice","sender_id":"987654321","text":"!ping","timestamp":"2026-08-21T18:04:08Z","type":"message"}
+{"chat_id":"12345678901234567","chat_type":"open","chat_type_code":4,"is_from_me":false,"log_id":"3912432077316462593","sender":"Alice","sender_id":"987654321","text":"!ping","timestamp":"2026-08-21T18:04:08Z","type":"message"}
 ```
 
 JavaScript 정밀도 손실을 막기 위해 `chat_id`, `log_id`, `sender_id`는 문자열입니다.
@@ -113,7 +145,7 @@ JavaScript 정밀도 손실을 막기 위해 `chat_id`, `log_id`, `sender_id`는
 일반 계정 회원번호와 동일하다고 가정하지 않는 편이 안전합니다.
 
 ```bash
-native/.build/release/kakaotalk-bridge db-watch 123456789 --interval 0.3 --since-log-id 3912430000000000000
+native/.build/release/kakaotalk-agent watch --user-id 123456789 --interval 0.3 --since-log-id 3912430000000000000
 ```
 
 ## 메시지 발신
@@ -121,7 +153,7 @@ native/.build/release/kakaotalk-bridge db-watch 123456789 --interval 0.3 --since
 포커스를 빼앗지 않는 권장 방식:
 
 ```bash
-native/.build/release/kakaotalk-bridge send "채팅방 표시 이름" "안녕하세요" \
+native/.build/release/kakaotalk-agent send "채팅방 표시 이름" "안녕하세요" \
   --background-safe --keep-window --json
 ```
 
@@ -132,7 +164,7 @@ native/.build/release/kakaotalk-bridge send "채팅방 표시 이름" "안녕하
 Dry run:
 
 ```bash
-native/.build/release/kakaotalk-bridge send "채팅방 표시 이름" "안녕하세요" \
+native/.build/release/kakaotalk-agent send "채팅방 표시 이름" "안녕하세요" \
   --background-safe --json --dry-run
 ```
 
@@ -159,13 +191,15 @@ KakaoTalk을 활성화할 수 있습니다. 무인 봇은 안전 모드를 권�
 
 - stdout: JSON 또는 JSONL 기계 데이터
 - stderr: 준비 상태, AX trace, 진단
-- `db-watch`: 장기 실행 JSONL producer
+- `watch`: 장기 실행 JSONL producer
 - `send --json`: 단일 JSON 결과와 프로세스 exit code
 - 모든 외부 소비자는 `is_from_me=true`를 무시해 자기 응답 루프를 방지
 - AX 발송은 동시에 여러 개 실행하지 말고 직렬화
 - 불명확한 전송 오류는 중복 위험 때문에 무한 자동 재시도 금지
 
-전체 계약은 [`docs/PROTOCOL.md`](docs/PROTOCOL.md)를 참고하세요.
+성공은 exit code `0`, 실패는 non-zero를 사용합니다. ID는 JavaScript 정밀도 손실을 피하기 위해
+JSON 문자열로 전달합니다. `sender` 또는 `chat_name`이 없을 수 있으므로 소비자는 optional로
+처리해야 합니다.
 
 ## 운영상 제약
 

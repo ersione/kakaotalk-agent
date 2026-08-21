@@ -2,9 +2,9 @@ import ArgumentParser
 import Foundation
 
 private func invokedCommandName() -> String {
-    let executable = CommandLine.arguments.first ?? "kmsg"
+    let executable = CommandLine.arguments.first ?? "kakaotalk-agent"
     let name = URL(fileURLWithPath: executable).lastPathComponent
-    return name.isEmpty ? "kmsg" : name
+    return name.isEmpty ? "kakaotalk-agent" : name
 }
 
 @main
@@ -26,13 +26,15 @@ struct KakaoTalkBridge: ParsableCommand {
             Examples:
               \(commandName) status
               \(commandName) auth login
-              \(commandName) chats --json
+              \(commandName) chats --user-id 123456789 --json
+              \(commandName) messages --user-id 123456789 --chat-id 12345678901234567 --json
+              \(commandName) search --user-id 123456789 "keyword" --json
+              \(commandName) unread --user-id 123456789 --json
+              \(commandName) watch --user-id 123456789
+              \(commandName) chats --ax --json
               \(commandName) send "채팅방" "메시지"
               \(commandName) send-image "채팅방" "/path/to/image.png"
-              \(commandName) watch "채팅방"
-              \(commandName) watch "채팅방" --json
-              \(commandName) mcp-server
-              \(commandName) update
+              \(commandName) watch --ax --chat "채팅방" --json
 
             Tip:
               \(commandName) -v
@@ -45,15 +47,13 @@ struct KakaoTalkBridge: ParsableCommand {
             ChatsCommand.self,
             SendCommand.self,
             SendImageCommand.self,
-            ReadCommand.self,
+            MessagesCommand.self,
+            SearchCommand.self,
+            UnreadCommand.self,
             WatchCommand.self,
-            WatchManyCommand.self,
             DBDiscoverCommand.self,
             DBStatusCommand.self,
-            DBWatchCommand.self,
             CacheCommand.self,
-            MCPServerCommand.self,
-            UpdateCommand.self,
         ],
         defaultSubcommand: StatusCommand.self
     )

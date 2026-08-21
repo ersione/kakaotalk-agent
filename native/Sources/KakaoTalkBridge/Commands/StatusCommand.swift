@@ -11,7 +11,7 @@ struct StatusCommand: ParsableCommand {
     var verbose: Bool = false
 
     func run() throws {
-        print("kmsg - KakaoTalk CLI Tool\n")
+        print("kakaotalk-agent - KakaoTalk local agent/CLI\n")
 
         // Check accessibility permission
         let hasPermission = AccessibilityPermission.ensureGranted()
@@ -64,41 +64,39 @@ struct StatusCommand: ParsableCommand {
             }
         }
 
-        print("\n✓ Ready to use kmsg commands\n")
+        print("\n✓ Ready to use kakaotalk-agent commands\n")
         printUsage()
     }
 
     private func printUsage() {
         print("""
-        USAGE: kmsg <command> [options]
+        USAGE: kakaotalk-agent <command> [options]
 
         COMMANDS:
           status    Check KakaoTalk and accessibility status
           auth      Log in and manage stored credentials
-          chats     List chat rooms
-          read      Read messages from a chat room
+          chats     List chat rooms from DB (or --ax)
+          messages  Read messages from DB (or --ax)
+          search    Search messages in the local DB
+          unread    List unread rooms and messages
+          watch     Stream new DB messages (or --ax)
           send      Send a message to a chat room
           send-image Send an image to a chat
           cache     Manage AX path cache
           inspect   Inspect KakaoTalk UI hierarchy (debug)
-          mcp-server Run the stdio MCP server for integrations
-          update    Update kmsg to the latest Homebrew release
 
         OPTIONS:
           --help    Show help for any command
           -v, --version Show version
 
         EXAMPLES:
-          kmsg -v                         Show version
-          kmsg auth login                 Prompt for credentials and log in
-          kmsg chats                      List all chat rooms
-          kmsg chats --json               List chat rooms with chat_id in JSON
-          kmsg read "친구이름"             Read messages from chat
-          kmsg send "친구이름" "안녕!"      Send a message
-          kmsg send-image "친구이름" "/tmp/a.png" Send an image
-          kmsg send --chat-id "<id>" "안녕!" Send a message by chat_id
-          kmsg mcp-server                 Run local MCP server
-          kmsg update                     Update kmsg through Homebrew
+          kakaotalk-agent -v
+          kakaotalk-agent chats --user-id 123456789 --json
+          kakaotalk-agent messages --user-id 123456789 --chat-id "<id>" --json
+          kakaotalk-agent search --user-id 123456789 "검색어" --json
+          kakaotalk-agent unread --user-id 123456789 --json
+          kakaotalk-agent watch --user-id 123456789
+          kakaotalk-agent send "채팅방" "안녕!" --background-safe --json
         """)
     }
 }

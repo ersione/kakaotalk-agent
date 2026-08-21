@@ -78,6 +78,7 @@ public struct SyncMessage: Sendable, Encodable {
     public let logId: Int64
     public let chatId: Int64
     public let chatName: String?
+    public let chatTypeCode: Int
     public let senderId: Int64
     public let senderName: String?
     public let text: String?
@@ -90,6 +91,7 @@ public struct SyncMessage: Sendable, Encodable {
         case logId = "log_id"
         case chatId = "chat_id"
         case chatName = "chat_name"
+        case chatTypeCode = "chat_type_code"
         case senderId = "sender_id"
         case senderName = "sender"
         case text

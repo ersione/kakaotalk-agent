@@ -205,6 +205,7 @@ public final class DatabaseReader: @unchecked Sendable {
         let sql = """
             SELECT m.logId, m.chatId,
                    COALESCE(r.chatName, u.displayName, u.friendNickName, u.nickName) as chatName,
+                   r.type,
                    m.authorId,
                    COALESCE(u2.displayName, u2.friendNickName, u2.nickName) as senderName,
                    m.message, m.type, m.sentAt
@@ -223,12 +224,13 @@ public final class DatabaseReader: @unchecked Sendable {
                 logId: row.int64(0),
                 chatId: row.int64(1),
                 chatName: row.string(2),
-                senderId: row.int64(3),
-                senderName: row.string(4),
-                text: row.string(5),
-                messageType: row.int(6),
-                timestamp: formatter.string(from: row.kakaoDate(7)),
-                isFromMe: row.int64(3) == myUserId
+                chatTypeCode: row.int(3),
+                senderId: row.int64(4),
+                senderName: row.string(5),
+                text: row.string(6),
+                messageType: row.int(7),
+                timestamp: formatter.string(from: row.kakaoDate(8)),
+                isFromMe: row.int64(4) == myUserId
             )
         }
     }
@@ -361,10 +363,10 @@ public final class DatabaseReader: @unchecked Sendable {
 extension Chat.ChatType {
     /// Map KakaoTalk's integer chat type to our enum.
     static func from(rawInt: Int) -> Self {
-        // KakaoTalk uses integer types; exact mapping TBD via testing
         switch rawInt {
         case 0: return .direct
         case 1: return .group
+        case 4: return .openChat
         default: return .unknown
         }
     }

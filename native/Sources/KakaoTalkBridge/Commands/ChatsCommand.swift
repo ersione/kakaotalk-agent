@@ -1,14 +1,14 @@
 import ArgumentParser
 import Foundation
 
-struct ChatsCommand: ParsableCommand {
+struct AXChatsCommand: ParsableCommand {
     private struct ChatsJSONResponse: Codable {
         let count: Int
         let chats: [ChatListEntry]
     }
 
     static let configuration = CommandConfiguration(
-        commandName: "chats",
+        commandName: "ax-chats",
         abstract: "List chat rooms"
     )
 

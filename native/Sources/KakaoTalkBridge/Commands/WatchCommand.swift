@@ -18,7 +18,7 @@ private func watchWasInterrupted() -> Bool {
     watchSignalInterrupted != 0
 }
 
-struct WatchCommand: ParsableCommand {
+struct AXWatchCommand: ParsableCommand {
     private struct WatchJSONEvent: Encodable {
         let chat: String
         let event: String
@@ -34,7 +34,7 @@ struct WatchCommand: ParsableCommand {
     }
 
     static let configuration = CommandConfiguration(
-        commandName: "watch",
+        commandName: "ax-watch",
         abstract: "Watch a chat and print new messages in real time"
     )
 
