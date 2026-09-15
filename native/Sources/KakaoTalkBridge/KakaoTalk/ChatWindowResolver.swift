@@ -28,6 +28,10 @@ enum ChatWindowInteractionMode {
     case backgroundSafe
 }
 
+struct ChatWindowUnavailable: Error, CustomStringConvertible {
+    let description: String
+}
+
 struct ChatWindowResolution {
     let window: UIElement
     let method: ChatWindowResolutionMethod
@@ -210,7 +214,7 @@ struct ChatWindowResolver {
             return ChatWindowResolution(window: focusedWindow, method: .existingWindow)
         }
 
-        throw KakaoTalkError.elementNotFound(
+        throw ChatWindowUnavailable(description:
             "[\(ChatWindowFailureCode.backgroundSafeBlocked.rawValue)] No already exposed chat window matched '\(query)'. " +
             "Background-safe mode does not activate KakaoTalk, open chat rows, search, resize, or close windows."
         )

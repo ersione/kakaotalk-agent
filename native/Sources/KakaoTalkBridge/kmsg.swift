@@ -32,6 +32,7 @@ struct KakaoTalkBridge: ParsableCommand {
               \(commandName) unread --user-id 123456789 --json
               \(commandName) watch --user-id 123456789
               \(commandName) chats --ax --json
+              \(commandName) open "채팅방" --json
               \(commandName) send "채팅방" "메시지"
               \(commandName) send-image "채팅방" "/path/to/image.png"
               \(commandName) watch --ax --chat "채팅방" --json
@@ -45,6 +46,7 @@ struct KakaoTalkBridge: ParsableCommand {
             StatusCommand.self,
             InspectCommand.self,
             ChatsCommand.self,
+            OpenCommand.self,
             SendCommand.self,
             SendImageCommand.self,
             MessagesCommand.self,

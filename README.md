@@ -9,8 +9,9 @@ macOS용 카카오톡 로컬 에이전트/CLI입니다. 공식 Bot API가 아니
 - `messages [--ax]`: 채팅방 최신 메시지
 - `search`, `unread`: 로컬 메시지 검색과 안 읽은 대화
 - `watch [--ax]`: 새 메시지를 JSONL로 스트리밍
+- `open <채팅방명> --json`: 메시지 전송 없이 채팅창 열기·유지
 - `send --json`: 열린 채팅창으로 메시지 전송
-- `send --background-safe`: 다른 앱의 포커스를 빼앗지 않는 대상 PID 전송
+- `send`: 기본 백그라운드 전송, `--foreground`를 지정할 때만 전면 조작 허용
 
 특정 명령어나 응답 정책은 포함하지 않습니다. 외부 봇은 이 README의 JSON/JSONL
 계약으로 연결합니다.
@@ -30,6 +31,8 @@ KakaoTalk open window ◄── kakaotalk-agent send ◄────── JSON 
 수신에는 채팅창이 필요 없습니다. 백그라운드 발신은 대상 채팅창이 같은 macOS Space에 열려
 있고 최소화되지 않아야 합니다. 안전 모드에서는 창이나 composer를 찾지 못해도 KakaoTalk을
 전면 활성화하지 않고 실패합니다.
+
+채팅창은 아래 `open` 명령으로 열어 둡니다.
 
 기본 조회와 감시는 DB를 read-only로 사용합니다. `chats`, `messages`, `watch`에서 실제
 KakaoTalk 화면을 기준으로 동작해야 할 때만 `--ax`를 사용합니다. `search`와 `unread`는
@@ -151,13 +154,45 @@ JavaScript 정밀도 손실을 막기 위해 `chat_id`, `log_id`, `sender_id`는
 native/.build/release/kakaotalk-agent watch --user-id 123456789 --interval 0.3 --since-log-id 3912430000000000000
 ```
 
+## 채팅창 열기
+
+```bash
+native/.build/release/kakaotalk-agent open "채팅방 표시 이름"
+native/.build/release/kakaotalk-agent open "채팅방 표시 이름" --json
+```
+
+카카오톡을 전면으로 가져와 표시 이름이 정확히 일치하는 채팅창을 열고 유지합니다.
+이미 열린 창은 다시 사용하며 최소화돼 있으면 복원합니다. 메시지를 입력하거나 전송하지
+않고, 창 크기도 변경하지 않습니다. 카카오톡은 실행·로그인된 상태여야 합니다.
+
+```json
+{"action":"open","chat":"채팅방 표시 이름","status":"opened"}
+```
+
+- 이미 열린 경우 `status: "already_open"`, 실패는 `status: "error"`와 `error` 설명입니다.
+- 성공은 exit code `0`, 실패는 non-zero입니다. `--trace-ax`는 진단을 stderr로 출력합니다.
+- 기존 창 → 채팅 목록의 정확한 방 이름 → 검색 순서로 찾습니다. 같은 이름의 후보가
+  여러 개면 실패하며 일부 이름만 일치하는 방은 선택하지 않습니다.
+- 채팅 목록의 `AXRow > AXCell`에서 방 이름 `AXStaticText`를 찾아 현재 좌표로
+  더블클릭합니다.
+  전송 버튼의 AXPress와 달리 행은 액션을 지원하지 않을 수 있어 전면 마우스 이벤트를
+  사용합니다. 다른 앱으로 포커스가 바뀌면 클릭을 중단합니다.
+- 대화 미리보기까지 깊게 검색하지 않으며 탐색에는 시간·노드 수 제한을 둡니다.
+  클릭 후 실제로 대상 이름의 창이 생겼는지 확인해야 성공을 반환합니다.
+- `open`과 `send`는 동시에 실행하지 않습니다. 봇 재시도와 겹치면 봇을 잠시 정지하고
+  창을 연 뒤 다시 실행합니다. 백그라운드 발송을 위해 같은 Space에서 최소화하지 않습니다.
+
+`send --dry-run`은 창을 열지 않습니다. `messages --ax`의 공개 옵션에는
+`--keep-window`가 없고 내부 읽기 명령은 임시로 연 창을 닫을 수 있으므로, 창을 열어
+유지하는 작업에는 `open`을 사용합니다.
+
 ## 메시지 발신
 
 포커스를 빼앗지 않는 권장 방식:
 
 ```bash
 native/.build/release/kakaotalk-agent send "채팅방 표시 이름" "안녕하세요" \
-  --background-safe --keep-window --json
+  --keep-window --json
 ```
 
 ```json
@@ -168,15 +203,34 @@ Dry run:
 
 ```bash
 native/.build/release/kakaotalk-agent send "채팅방 표시 이름" "안녕하세요" \
-  --background-safe --json --dry-run
+  --json --dry-run
 ```
 
-사람이 직접 사용하는 복구 모드에서는 `--background-safe`를 빼면 창 탐색 과정에서
-KakaoTalk을 활성화할 수 있습니다. 무인 봇은 안전 모드를 권장합니다.
+`send`는 기본적으로 카카오톡을 전면으로 가져오지 않습니다. 창을 찾을 수 없으면
+메시지 입력 전에 실패합니다. 창을 열려면 `open`을 호출한 뒤 다시 `send`합니다.
+
+```bash
+native/.build/release/kakaotalk-agent open "채팅방 표시 이름" --json
+native/.build/release/kakaotalk-agent send "채팅방 표시 이름" "안녕하세요" --json
+```
+
+기존 전면 검색·발송 동작이 필요하면 `send --foreground`를 명시합니다.
+`send --background-safe` 옵션은 제거했으며 전달하면 인자 오류가 발생합니다.
+
+`send --json`의 실패 응답에는 `error_code`와 `delivery_state`가 포함됩니다.
+
+- `WINDOW_UNAVAILABLE` + `not_sent`: 접근 가능한 대상 창이 없어 전송 전에 실패했습니다.
+  봇은 이 경우에만 `open` 후 `send`를 한 번 재시도할 수 있습니다.
+- `SEND_FAILED` + `not_sent`: 입력창·권한 등 다른 전송 전 실패입니다.
+- `SEND_FAILED` + `unknown`: 전송 동작을 시도했으나 결과를 확정하지 못했습니다.
+  창을 열고 즉시 재전송하지 말고 실제 수신 여부를 확인합니다.
+- 성공은 `delivery_state: sent`, dry run은 `not_sent`입니다.
+- 프로세스 시간 초과·강제 종료·잘못된 JSON처럼 신뢰할 응답 자체가 없는 경우도
+  호출자는 전송 결과를 불확실한 것으로 취급해야 합니다.
 
 ### 여러 채팅방으로 백그라운드 발신
 
-`--background-safe`는 여러 개로 열려 있는 채팅창 사이를 번갈아 발신할 수 있습니다. 각 요청은
+기본 `send`는 여러 개로 열려 있는 채팅창 사이를 번갈아 발신할 수 있습니다. 각 요청은
 채팅방 표시 이름으로 대상 `AXWindow`와 composer를 찾고, KakaoTalk 프로세스 안의 포커스를
 그 창과 입력창에 맞춘 뒤 `전송` 버튼 `AXPress`를 우선 사용합니다. 필요하면 대상 PID 좌표
 클릭과 Return으로 폴백합니다. 이 과정은 `NSRunningApplication.activate()`를 호출하지 않으므로

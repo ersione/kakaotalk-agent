@@ -11,11 +11,15 @@ struct SendCommand: ParsableCommand {
         let backgroundSafe: Bool
         let dryRun: Bool
         let error: String?
+        let errorCode: String?
+        let deliveryState: String
 
         enum CodingKeys: String, CodingKey {
             case status, action, chat, message, error
             case backgroundSafe = "background_safe"
             case dryRun = "dry_run"
+            case errorCode = "error_code"
+            case deliveryState = "delivery_state"
         }
     }
     static let configuration = CommandConfiguration(
@@ -55,11 +59,10 @@ struct SendCommand: ParsableCommand {
     @Flag(name: [.short, .long], help: "Keep chat and list windows open after sending message")
     var keepWindow: Bool = false
 
-    @Flag(
-        name: .long,
-        help: "Do not activate KakaoTalk; send only through an already exposed matching chat window"
-    )
-    var backgroundSafe: Bool = false
+    @Flag(name: .long, help: "Allow activating KakaoTalk and searching/opening chat windows to send")
+    var foreground: Bool = false
+
+    private var backgroundSafe: Bool { !foreground }
 
     @Flag(
         name: .long,
@@ -134,26 +137,26 @@ struct SendCommand: ParsableCommand {
             return
         }
 
-        guard AccessibilityPermission.ensureGranted() else {
-            AccessibilityPermission.printInstructions()
-            throw ExitCode.failure
-        }
-
-        let runner = AXActionRunner(traceEnabled: traceAX)
-
-        prepareCacheIfNeeded(runner: runner)
-        let kakao = backgroundSafe
-            ? try KakaoTalkApp(autoLaunch: false)
-            : try AuthBootstrap.requireAuthenticated(traceAX: traceAX)
-        let chatWindowResolver = ChatWindowResolver(
-            kakao: kakao,
-            runner: runner,
-            useCache: !noCache,
-            deepRecoveryEnabled: deepRecovery,
-            interactionMode: backgroundSafe ? .backgroundSafe : .allowUIAutomation
-        )
-
+        var submissionAttempted = false
         do {
+            guard AccessibilityPermission.ensureGranted() else {
+                throw KakaoTalkError.actionFailed("Accessibility permission required")
+            }
+
+            let runner = AXActionRunner(traceEnabled: traceAX)
+
+            prepareCacheIfNeeded(runner: runner)
+            let kakao = backgroundSafe
+                ? try KakaoTalkApp(autoLaunch: false)
+                : try AuthBootstrap.requireAuthenticated(traceAX: traceAX)
+            let chatWindowResolver = ChatWindowResolver(
+                kakao: kakao,
+                runner: runner,
+                useCache: !noCache,
+                deepRecoveryEnabled: deepRecovery,
+                interactionMode: backgroundSafe ? .backgroundSafe : .allowUIAutomation
+            )
+
             runner.log("window strategy: focusedWindow -> mainWindow -> windows.first")
             let resolution: ChatWindowResolution
             if let chatID {
@@ -175,7 +178,8 @@ struct SendCommand: ParsableCommand {
                 }
             }
 
-            try sendMessageToWindow(resolution.window, kakao: kakao, runner: runner)
+            try sendMessageToWindow(resolution.window, kakao: kakao, runner: runner,
+                                    beforeSubmission: { submissionAttempted = true })
             closeWindowsIfNeeded(
                 resolution: resolution,
                 kakao: kakao,
@@ -185,7 +189,9 @@ struct SendCommand: ParsableCommand {
             if json { emitJSON(status: "sent") }
         } catch {
             if json {
-                emitJSON(status: "error", error: String(describing: error))
+                emitJSON(status: "error", error: String(describing: error),
+                         errorCode: error is ChatWindowUnavailable ? "WINDOW_UNAVAILABLE" : "SEND_FAILED",
+                         deliveryState: submissionAttempted ? "unknown" : "not_sent")
             } else {
                 print("Failed to send message: \(error)")
             }
@@ -197,14 +203,17 @@ struct SendCommand: ParsableCommand {
         if !json { print(text) }
     }
 
-    private func emitJSON(status: String, error: String? = nil) {
+    private func emitJSON(status: String, error: String? = nil, errorCode: String? = nil,
+                          deliveryState: String? = nil) {
         let result = SendResult(
             status: status,
             chat: chatID ?? recipient ?? "",
             message: message,
             backgroundSafe: backgroundSafe,
             dryRun: dryRun,
-            error: error
+            error: error,
+            errorCode: errorCode,
+            deliveryState: deliveryState ?? (status == "sent" ? "sent" : "not_sent")
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -315,7 +324,8 @@ struct SendCommand: ParsableCommand {
         return relativeY < 0.5
     }
 
-    private func sendMessageToWindow(_ window: UIElement, kakao: KakaoTalkApp, runner: AXActionRunner) throws {
+    private func sendMessageToWindow(_ window: UIElement, kakao: KakaoTalkApp, runner: AXActionRunner,
+                                     beforeSubmission: () -> Void) throws {
         if !backgroundSafe {
             // CGEvent keyboard fallback requires KakaoTalk to be the foreground app.
             kakao.activate()
@@ -329,6 +339,7 @@ struct SendCommand: ParsableCommand {
                     "Background send could not find the message input without activating KakaoTalk"
                 )
             }
+            beforeSubmission()
             let forcedTyped = forceTypeIntoChatWindow(chatWindow: window, kakao: kakao, runner: runner)
             guard forcedTyped else {
                 throw KakaoTalkError.actionFailed("[\(SendFailureCode.forcedTypingFailed.rawValue)] Message input field not found and forced typing fallback failed")
@@ -357,6 +368,7 @@ struct SendCommand: ParsableCommand {
                 runner.log("message input: background AX window/input focus request failed (\(error))")
             }
             if let sendButton = findSendButtonNearInput(input, runner: runner) {
+                beforeSubmission()
                 do {
                     try sendButton.press()
                     runner.log("message input: requested send button AXPress")
@@ -376,6 +388,7 @@ struct SendCommand: ParsableCommand {
                     }
                 }
             }
+            beforeSubmission()
             runner.pressEnterKey(toPID: kakao.processIdentifier)
             if runner.waitUntil(label: "message input pid-targeted Return", timeout: 0.6, condition: {
                 let after = input.stringValue ?? ""
@@ -389,6 +402,7 @@ struct SendCommand: ParsableCommand {
             )
         }
 
+        beforeSubmission()
         var sendSucceeded = runner.pressEnterWithVerification(
             on: input,
             label: "message input",
