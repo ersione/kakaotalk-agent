@@ -123,8 +123,8 @@ public final class KakaoTalkApp: Sendable {
             app.unhide()
         }
 
-        // Use activateIgnoringOtherApps to reliably bring to foreground
-        app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        // macOS 14+ ignores activateIgnoringOtherApps; request all windows normally.
+        app.activate(options: [.activateAllWindows])
 
         // NSRunningApplication activation is occasionally ignored by recent
         // KakaoTalk/macOS combinations. Apple events reliably restore the AX
